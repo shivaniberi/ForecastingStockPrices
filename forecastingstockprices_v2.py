@@ -15,7 +15,7 @@ def return_snowflake_conn():
         password=password,
         account=account,  # Example: 'xyz12345.us-east-1'
         warehouse='compute_wh',
-        database='dev'
+        database='DEMOAPI'
     )
     # Create a cursor object
     return conn.cursor()
@@ -91,11 +91,11 @@ with DAG(
     schedule='30 2 * * *'  # Adjust schedule as needed
 ) as dag:
 
-    train_input_table = "dev.raw_data.market_data"
-    train_view = "dev.adhoc.market_data_view"
-    forecast_table = "dev.adhoc.market_data_forecast"
-    forecast_function_name = "dev.analytics.predict_stock_price"
-    final_table = "dev.analytics.market_data"
+    train_input_table = "demoapi.raw_data.stock_price"
+    train_view = "demoapi.adhoc.market_data_view"
+    forecast_table = "demoapi.adhoc.market_data_forecast"
+    forecast_function_name = "demoapi.analytics.predict_stock_price"
+    final_table = "demoapi.analytics.market_data"
     cur = return_snowflake_conn()
 
     train(cur, train_input_table, train_view, forecast_function_name)
