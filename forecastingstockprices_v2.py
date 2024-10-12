@@ -1,7 +1,13 @@
+# In Cloud Composer, add snowflake-connector-python to PYPI Packages
 from airflow import DAG
+from airflow.models import Variable
 from airflow.decorators import task
+
+from datetime import timedelta
 from datetime import datetime
-import snowflake.connector  # Ensure you have this library installed
+import snowflake.connector
+import requests
+
 
 def return_snowflake_conn():
 
