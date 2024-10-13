@@ -2,15 +2,10 @@
 from airflow import DAG
 from airflow.models import Variable
 from airflow.decorators import task
-
-from datetime import timedelta
-from datetime import datetime
+from datetime import timedelta, datetime
 import snowflake.connector
-import requests
-
 
 def return_snowflake_conn():
-
     user_id = Variable.get('snowflake_userid')
     password = Variable.get('snowflake_password')
     account = Variable.get('snowflake_account')
@@ -19,21 +14,19 @@ def return_snowflake_conn():
     conn = snowflake.connector.connect(
         user=user_id,
         password=password,
-        account=account,  # Example: 'xyz12345.us-east-1'
+        account=account,
         warehouse='compute_wh',
         database='DEMOAPI'
     )
     # Create a cursor object
     return conn.cursor()
 
-
 @task
 def train(cur, train_input_table, train_view, forecast_function_name):
     """
-     - Create a view with training related columns
-     - Create a model with the view above
+    - Create a view with training related columns
+    - Create a model with the view above
     """
-
     create_view_sql = f"""CREATE OR REPLACE VIEW {train_view} AS SELECT
         DATE, CLOSE, SYMBOL
         FROM {train_input_table};"""
@@ -49,21 +42,20 @@ def train(cur, train_input_table, train_view, forecast_function_name):
     try:
         cur.execute(create_view_sql)
         cur.execute(create_model_sql)
-        # Inspect the accuracy metrics of your model. 
+        # Inspect the accuracy metrics of your model
         cur.execute(f"CALL {forecast_function_name}!SHOW_EVALUATION_METRICS();")
     except Exception as e:
         print(e)
         raise
 
-
 @task
 def predict(cur, forecast_function_name, train_input_table, forecast_table, final_table):
     """
-     - Generate predictions and store the results to a table named forecast_table.
-     - Union your predictions with your historical data, then create the final table
+    - Generate predictions and store the results to a table named forecast_table.
+    - Union your predictions with your historical data, then create the final table
     """
     make_prediction_sql = f"""BEGIN
-        -- This is the step that creates your predictions.
+        -- This step creates your predictions.
         CALL {forecast_function_name}!FORECAST(
             FORECASTING_PERIODS => 7,
             -- Here we set your prediction interval.
@@ -73,7 +65,7 @@ def predict(cur, forecast_function_name, train_input_table, forecast_table, fina
         LET x := SQLID;
         CREATE OR REPLACE TABLE {forecast_table} AS SELECT * FROM TABLE(RESULT_SCAN(:x));
     END;"""
-    
+
     create_final_table_sql = f"""CREATE OR REPLACE TABLE {final_table} AS
         SELECT SYMBOL, DATE, CLOSE AS actual, NULL AS forecast, NULL AS lower_bound, NULL AS upper_bound
         FROM {train_input_table}
@@ -88,7 +80,6 @@ def predict(cur, forecast_function_name, train_input_table, forecast_table, fina
         print(e)
         raise
 
-
 with DAG(
     dag_id='TrainPredict',
     start_date=datetime(2024, 9, 21),
@@ -102,7 +93,13 @@ with DAG(
     forecast_table = "demoapi.adhoc.market_data_forecast"
     forecast_function_name = "demoapi.analytics.predict_stock_price"
     final_table = "demoapi.analytics.market_data"
+
+    # Initialize Snowflake connection
     cur = return_snowflake_conn()
 
-    train(cur, train_input_table, train_view, forecast_function_name)
-    predict(cur, forecast_function_name, train_input_table, forecast_table, final_table)
+    # Define task dependencies
+    training_task = train(cur, train_input_table, train_view, forecast_function_name)
+    prediction_task = predict(cur, forecast_function_name, train_input_table, forecast_table, final_table)
+
+    # Chain the tasks: predict after train
+    training_task >> prediction_task
